@@ -5,16 +5,16 @@ let link = document.location.href;
 if(link.indexOf("reestrNumber") != -1 || link.indexOf("regNumber") != -1){
   
   let contentCard = document.querySelectorAll(".container");
-  var contentCardText = "";
+  var contentCardText = contentCard.length + "href=" + link + " ";
   
   if (link.indexOf("reestrNumber") != -1) {
     var n = 3;
   }else{
-    var n = 7;
+    var n = 8;
   }
   
   for(let i=3; i<contentCard.length-n; i++){
-    contentCardText += contentCard[i].textContent;
+    contentCardText += contentCard[i].innerText;
   }
   
   let bg = document.createElement("div");
@@ -24,7 +24,7 @@ if(link.indexOf("reestrNumber") != -1 || link.indexOf("regNumber") != -1){
     
   let block = document.createElement("div");
 
-  block.style.cssText = "background-color: #fff; position: fixed; z-index:100001; top:100px; left: 200px; width: 1000px; padding: 10px; font-size: 12px;";
+  block.style.cssText = "background-color: #fff; position: fixed; z-index:100001; top:100px; left: 200px; height: 80%; width: 1000px; padding: 10px; font-size: 12px; overflow: scroll";
   block.className = "selectRange";
   block.innerHTML = contentCardText.toString();
 
