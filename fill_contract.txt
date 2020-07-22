@@ -1,0 +1,186 @@
+Sub Click(Source As Button)
+	Dim ws As New NotesUIWorkspace
+	Dim s As New NotesSession
+	Dim uiDoc As NotesUIDocument
+	Dim notesItem As NotesItem
+	Dim items, item, itemsUrl, itemUrl As Variant
+	Dim body, tmp, tmp1,tmp2, link, numZak, priceCont, linkCont As String
+	Dim tmpCur As Currency
+	Dim tmpSng As Single 
+	
+	Set db = s.CurrentDatabase
+	Set uiDoc = ws.CurrentDocument
+	Set doc = uiDoc.Document
+	
+	REM Получаем номер закупки
+	items = doc.ITEMS
+	REM Ищем № закупки
+	Forall n In items
+		If n.Name = "ReestrNumIzveshcheniya" Then
+			numZak = Strright(n.TEXT, "№")
+			Goto GetDocByUrl
+		End If
+	End Forall
+	
+GetDocByUrl:
+	If numZak="" Then Goto Endh
+	
+	REM Ищем Цену контракта, если контракт уже занесен (для обновления данных контракта)
+	Forall n In items
+		If n.Name = "PriceContract" Then
+			priceCont = Cstr(n.TEXT)
+			Goto GetPriceCont
+		End If
+	End Forall
+	
+GetPriceCont:
+	REM Формируем ссылку для поиска контракта
+	link = "http://zakupki.gov.ru/epz/order/notice/ea44/view/supplier-results.html?regNumber=" + numZak
+	
+REM	Set urlDoc = db.GetDocumentByURL(link)
+	
+%REM Получаем текст со страницы закупки о заключенных контрактах
+	itemsUrl = urlDoc.ITEMS
+	Set itemUrl = itemsUrl(Ubound(itemsUrl))
+	body = itemUrl.TEXT
+%END REM	
+	REM Для настройки заполнения 
+	REM Set notesItem = doc.ReplaceItemValue("Txt", body)
+	
+	REM Ссылка на контракт
+	tmp1 = Strrightback(body, "Сведения о контракте из реестра контрактов")
+	tmp1 = Strrightback(tmp1, "№")
+	tmp = Fulltrim(Strleft(tmp1, " " ))
+	
+%REM Проверка на наличие контракта
+	If tmp = "" Then
+		tmp1 = Strrightback(body, "реестра контрактов")
+		tmp1 = Strright(tmp1, "№")
+		tmp = Trim(Left(tmp1, 20))		
+	End If	
+	
+	If tmp = "" Then
+		Msgbox "Контракт отсутствует на госзакупках"
+		Goto Endh
+	End If
+
+	linkCont = "http://zakupki.gov.ru/epz/contract/contractCard/common-info.html?reestrNumber=" + Cstr(tmp)
+	Set contDoc = db.GetDocumentByURL(linkCont)
+%END REM	
+	
+	REM Добавляем номер контракта
+	REM tmp2 = "№" + tmp
+	
+	REM Получаем текст
+	Forall n In items
+		If n.Name = "Prim" Then
+			body = n.TEXT
+			Goto FillFields
+		End If
+	End Forall
+	
+	
+REM Номер контракта
+FillFields:	
+	tmp2 = Strright(body, "№")
+	tmp2 = Fulltrim(Strleft(tmp2, "ПОДПИСАТЬСЯ"))
+	tmp = "№" + tmp2
+	Set notesItem = doc.ReplaceItemValue("ReestrNumContract", tmp)
+	
+	linkCont = "https://zakupki.gov.ru/epz/contract/contractCard/common-info.html?reestrNumber=" + Cstr(tmp2)
+	
+	REM Добавляем ссылку на контракт
+	Set notesItem = doc.ReplaceItemValue("ContractLink", linkCont)	
+	
+%REM Получаем текст со страницы контракта
+	itemsUrl = contDoc.ITEMS
+	Set itemUrl = itemsUrl(Ubound(itemsUrl))
+	body = itemUrl.TEXT
+%END REM
+	
+	REM Цена заключенного контракта
+	tmp1 = Strright(body, "Цена контракта")
+	tmp = Strleft(tmp1, "₽")
+%REM		
+	tmp = Fulltrim(Strleft(tmp, Chr(10) )	)
+	tmp1 = Strleft(tmp, ",")
+	tmp2 = Left(Strright(tmp, ","), 2)
+	tmp = tmp1 + "," + tmp2	
+%END REM	
+	tmpCur = Ccur(tmp)
+	Set notesItem = doc.ReplaceItemValue("PriceContract", tmpCur)
+	
+	REM Очищаем поле с текстом о контракте
+	Call doc.ReplaceItemValue("Prim", "")
+	
+	REM Добавляем разницу между текущей ценой и предыдущей ценой контракта в примечания
+	If priceCont = "" Then Goto FactSt
+	tmp1 = tmpCur - Ccur(priceCont)
+	Set notesItem = doc.ReplaceItemValue("Prim", tmp1)
+	
+FactSt:
+	REM Фактическая стоимость закупки
+	Forall n In items
+		If n.Name = "FactStoimostPosleSnizheniya" Then
+			If n.TEXT = "0" Or n.TEXT = "" Then
+				Set notesItem = doc.ReplaceItemValue("FactStoimostPosleSnizheniya", tmpCur)
+			End If
+			Goto DateContr
+		End If
+	End Forall
+	
+DateContr:	
+	REM Дата заключения контракта
+	tmp1 = Strright(body, "Дата заключения контракта")
+	tmp = Fulltrim(Strleft(tmp1, " Номер контракта"))
+	Set notesItem = doc.ReplaceItemValue("DataContract", tmp)
+	
+	REM Дата окончания исполнения
+	tmp1 = Strrightback(body, "Дата окончания исполнения контракта")
+	tmp = Fulltrim(Strleft(tmp1, "Номер реестровой"))
+	If Len(tmp) < 1 Then
+		tmp = Fulltrim(Strleft(tmp1, "Размер обеспечения"))
+		If Len(tmp) < 1 Then
+			tmp = Fulltrim(Strleft(tmp1, " "))
+			If Len(tmp) < 1 Then
+				tmp = Fulltrim(Left(tmp1, 12))
+			End If
+		End If
+	End If
+	tmp = Left(tmp, 11)
+	Set notesItem = doc.ReplaceItemValue("DataEndContract", tmp)
+	
+	REM Номер контракта
+	tmp1 = Strrightback(body, "Номер контракта")
+	tmp = Fulltrim(Strleft(tmp1, "Предмет контракта"))
+	If Len(tmp) <1 Then
+		tmp = Fulltrim(Strleft(tmp1, "Способ указания"))
+	End If
+	Set notesItem = doc.ReplaceItemValue("ContractNum", tmp)	
+	
+	REM ИНН подрядчика и его наименование
+	tmp1 = Strrightback(body, "ИНН:")
+	tmp = Fulltrim(Strleft(tmp1, "КПП"))
+	tmp = convertInn(tmp)
+	Set notesItem = doc.ReplaceItemValue("PobeditelINN", tmp)
+	
+	tmp2 = getOrgNameByInn(tmp)
+	If tmp2 = "" Then
+		tmp = Strleftback(body, "Код")
+		tmp1 = Strrightback(tmp, "Статус")
+		tmp1 = Fulltrim(tmp1)
+		Set notesItem = doc.ReplaceItemValue("Prim", tmp1)
+	End If
+	Set notesItem = doc.ReplaceItemValue("Pobeditel", tmp2)
+	
+	Forall n In items
+		If n.Name = "Uchastniki" Then
+			tmp = n.TEXT
+			If tmp = "" Or tmp = " " Then
+				Set notesItem = doc.ReplaceItemValue("Uchastniki", tmp2)
+			End If
+		End If
+	End Forall
+	
+Endh:
+End Sub

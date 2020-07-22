@@ -1,0 +1,113 @@
+Sub Click(Source As Button)
+	Dim ws As New NotesUIWorkspace
+	Dim s As New NotesSession
+	Dim uiDoc As NotesUIDocument
+	Dim notesItem As NotesItem
+	Dim items, item As Variant
+	Dim body, tmp, tmp1,tmp2, link As String
+	Dim tmpCur As Currency
+	
+	Set db = s.CurrentDatabase	
+	Set uiDoc = ws.CurrentDocument
+	Set doc = uiDoc.Document
+	
+	REM Получаем поля из документа
+	items = doc.ITEMS
+	
+	REM Проверяем Заполнен ли контракт - чтобы не заполнять повторно
+	Forall n In items
+		If n.Name = "KontraktStartPrice" Then
+			tmp = n.TEXT
+			If tmp = "0" Or tmp = "" Then
+				Goto ResumeFill
+			Else
+				Goto Endh
+			End If
+		End If
+	End Forall
+	
+ResumeFill:	
+	REM Ищем ссылку
+	Forall n In items
+		If n.Name = "ZakazLink" Then
+			link = n.TEXT
+			Goto GetDocByUrl
+		End If
+	End Forall
+	
+	
+GetDocByUrl:		
+	If Left(link, 4) <> "http" Then
+		link = "http://" + link
+	End If	
+	
+%REM	
+	Set urlDoc = db.GetDocumentByURL(link)
+	
+	
+	items = urlDoc.ITEMS
+	Set item = items(Ubound(items))
+	body = item.TEXT
+%END REM
+	
+	REM Для настройки заполнения 
+	REM Set notesItem = doc.ReplaceItemValue("Prim", body)
+	
+	REM Ищем ссылку
+	Forall n In items
+		If n.Name = "Prim" Then
+			body = n.TEXT
+			Goto FillFields
+		End If
+	End Forall
+	
+FillFields:
+	REM № закупки 
+	tmp1 = Strright(body, "№")
+	tmp = Fulltrim(Strleft(tmp1, "ПОДПИСАТЬСЯ"))
+	tmp = "№" + tmp
+	Set notesItem = doc.ReplaceItemValue("ReestrNumIzveshcheniya", Fulltrim(tmp))
+	
+	REM Ссылка на закупку
+	tmp1 = Strright( body, "href=")
+	tmp = Fulltrim( Strleft( tmp1, "Назад к результатам"))
+	Call doc.ReplaceItemValue("ZakazLink", Fulltrim(tmp))
+	
+	REM Наименование закупки 20/7/2020
+	tmp1 = Strright(body, "Наименование объекта закупки")
+	tmp = Fulltrim(Cstr(Strleft(tmp1, "Этап закупки")))	
+	Set notesItem = doc.ReplaceItemValue("PolnoeNaimenovanieProcedure", tmp)
+	
+	REM Начальная цена
+	tmp1 = Strright(body, "Начальная цена")
+	tmp = Strleft(tmp1, "₽")
+	tmpCur = Ccur(tmp)
+	Set notesItem = doc.ReplaceItemValue("KontraktStartPrice", tmpCur)
+	
+	REM Дата публикации
+	tmp1 = Strright(body, "Размещено")
+	REM tmp = Strleft(tmp1, "Окончание подачи")
+	REM 20/7/2020	
+	tmp = Strleft(tmp1, "Обновлено")
+	Set notesItem = doc.ReplaceItemValue("DatePublikatsii", Fulltrim(tmp))
+	
+	REM Дата подведения аукциона
+	tmp1 = Strright(body, "оценки вторых частей заявок")	
+	If Len(tmp1) < 1 Then
+		tmp1 =  Strright(body, "аукциона в электронной форме")	
+		If Len(tmp1) < 1 Then
+			tmp1 =  Strright(body, "Дата рассмотрения и оценки заявок")	
+		End If
+	End If
+	tmp = Left(tmp1, 11)
+	Set notesItem = doc.ReplaceItemValue("DateItogovProvedeniyaAuktsiona", Trim(tmp))
+	
+	REM ОКПД2
+	tmp1 = Strright(body, "СТОИМОСТЬ, ₽")
+	tmp = Left(tmp1, 14)
+REM	tmp2 = Right(tmp, Len(tmp)-2)
+	Set notesItem = doc.ReplaceItemValue("OKPD", tmp)
+	
+	Call doc.ReplaceItemValue("Prim", "")
+Endh:	
+End Sub
